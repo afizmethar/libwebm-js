@@ -151,13 +151,44 @@ class MinimalWebMParser {
     }
 
     /**
+     * Read EBML Element ID (keeps the length marker bit)
+     */
+    readElementId() {
+        if (this.pos >= this.buffer.length) return null;
+
+        const firstByte = this.buffer[this.pos];
+        let length = 0;
+        let mask = 0x80;
+
+        // Find the length based on the first bit set
+        for (let i = 0; i < 8; i++) {
+            if (firstByte & mask) {
+                length = i + 1;
+                break;
+            }
+            mask >>= 1;
+        }
+
+        if (length === 0 || this.pos + length > this.buffer.length) return null;
+
+        // For Element IDs, keep the length marker bit as part of the ID
+        let value = 0;
+        for (let i = 0; i < length; i++) {
+            value = (value << 8) | this.buffer[this.pos + i];
+        }
+
+        this.pos += length;
+        return { value, length };
+    }
+
+    /**
      * Read EBML element (ID + size + data)
      */
     readElement() {
-        const id = this.readVint();
+        const id = this.readElementId();  // Use readElementId for Element IDs
         if (!id) return null;
 
-        const size = this.readVint();
+        const size = this.readVint();     // Use readVint for sizes (removes length marker)
         if (!size) return null;
 
         const dataStart = this.pos;
@@ -183,12 +214,16 @@ class MinimalWebMParser {
         }
 
         // Parse document structure
+        // console.log(`🔍 Starting to parse WebM structure (${this.buffer.length} bytes)`);
         while (this.pos < this.buffer.length) {
             const element = this.readElement();
             if (!element) break;
 
-            // Segment element (0x18538067)
-            if (element.id === 0x18538067) {
+            // console.log(`🔍 Root element: 0x${element.id.toString(16).padStart(8, '0')} (${element.size} bytes)`);
+
+            // Segment element (0x18538067 or 0x08538067 - different EBML parsers may read this differently)
+            if (element.id === 0x18538067 || element.id === 0x08538067) {
+                // console.log('🔍 Found Segment, parsing...');
                 this.parseSegment(element.data);
                 break;
             }
@@ -233,18 +268,22 @@ class MinimalWebMParser {
             const element = parser.readElement();
             if (!element) break;
 
+            // console.log(`🔍 Segment element: 0x${element.id.toString(16).padStart(8, '0')} (${element.size} bytes)`);
+
             switch (element.id) {
                 case 0x1549A966: // SegmentInfo
+                case 0x0549A966: // SegmentInfo (alternative parsing)
+                    // console.log('🔍 Found SegmentInfo');
                     this.parseSegmentInfo(element.data);
                     break;
                 case 0x1654AE6B: // Tracks
+                case 0x0654AE6B: // Tracks (alternative parsing)
+                    // console.log('🔍 Found Tracks');
                     this.parseTracks(element.data);
                     break;
             }
         }
-    }
-
-    /**
+    }    /**
      * Parse segment info for duration
      */
     parseSegmentInfo(infoData) {
@@ -271,20 +310,28 @@ class MinimalWebMParser {
     parseTracks(tracksData) {
         const parser = new MinimalWebMParser(tracksData);
 
+        // console.log(`🔍 Parsing tracks data (${tracksData.length} bytes)`);
+
         while (parser.pos < tracksData.length) {
             const element = parser.readElement();
             if (!element) break;
 
+            // console.log(`🔍 Tracks element: 0x${element.id.toString(16).padStart(8, '0')} (${element.size} bytes)`);
+
             if (element.id === 0xAE) { // TrackEntry
+                // console.log('🔍 Found TrackEntry');
                 const track = this.parseTrackEntry(element.data);
                 if (track) {
+                    // console.log(`🔍 Track parsed successfully: ${JSON.stringify(track)}`);
                     this.metadata.tracks.push(track);
+                } else {
+                    // console.log('🔍 Track parsing failed');
                 }
             }
         }
-    }
 
-    /**
+        // console.log(`🔍 Total tracks found: ${this.metadata.tracks.length}`);
+    }    /**
      * Parse individual track entry
      */
     parseTrackEntry(trackData) {
@@ -296,25 +343,35 @@ class MinimalWebMParser {
             name: ''
         };
 
+        // console.log(`🔍 Parsing TrackEntry (${trackData.length} bytes)`);
+
         while (parser.pos < trackData.length) {
             const element = parser.readElement();
             if (!element) break;
 
+            // console.log(`🔍 TrackEntry element: 0x${element.id.toString(16).padStart(8, '0')} (${element.size} bytes)`);
+
             switch (element.id) {
                 case 0xD7: // TrackNumber
                     track.trackNumber = this.readUint(element.data);
+                    // console.log(`🔍 Track number: ${track.trackNumber}`);
                     break;
                 case 0x83: // TrackType
                     track.trackType = this.readUint(element.data);
+                    // console.log(`🔍 Track type: ${track.trackType}`);
                     break;
                 case 0x86: // CodecID
                     track.codecId = this.readString(element.data);
+                    // console.log(`🔍 Codec ID: ${track.codecId}`);
                     break;
                 case 0x536E: // Name
                     track.name = this.readString(element.data);
+                    // console.log(`🔍 Track name: ${track.name}`);
                     break;
             }
         }
+
+        // console.log(`🔍 Track parsed: ${JSON.stringify(track)}`);
 
         return track.trackNumber > 0 ? track : null;
     }
