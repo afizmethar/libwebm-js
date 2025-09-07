@@ -1,6 +1,6 @@
 {
     "name": "@sctg/libwebm-js",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "WebAssembly bindings for libwebm",
     "type": "module",
     "main": "dist/wrapper-worker.js",
