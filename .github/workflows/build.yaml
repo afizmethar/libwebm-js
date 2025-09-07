@@ -18,6 +18,13 @@ jobs:
       with:
         submodules: recursive
 
+    - name: Initialize and update submodules
+      run: |
+        git submodule init
+        git submodule update --recursive --remote
+        ls -la src/libwebm/
+      shell: bash
+
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
@@ -36,6 +43,12 @@ jobs:
       continue-on-error: true
       run: |
         source ./emsdk/emsdk_env.sh
+        echo "Checking src/libwebm directory..."
+        ls -la src/libwebm/ || echo "src/libwebm directory not found!"
+        if [ ! -d "src/libwebm" ]; then
+          echo "Error: src/libwebm directory is missing"
+          exit 1
+        fi
         npm ci
         npm run build
         npm config set "//registry.npmjs.org/:_authToken=${{ secrets.NPMJS_TOKEN }}"

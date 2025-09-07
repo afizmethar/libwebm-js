@@ -44,14 +44,14 @@ if(NOT DEFINED EMSCRIPTEN)
 endif()
 
 # Add libwebm subdirectory
-add_subdirectory(libwebm)
+add_subdirectory(src/libwebm)
 
 # Include directories for libwebm
 include_directories(
-    ${CMAKE_SOURCE_DIR}/libwebm
-    ${CMAKE_SOURCE_DIR}/libwebm/common
-    ${CMAKE_SOURCE_DIR}/libwebm/mkvparser
-    ${CMAKE_SOURCE_DIR}/libwebm/mkvmuxer
+    ${CMAKE_SOURCE_DIR}/src/libwebm
+    ${CMAKE_SOURCE_DIR}/src/libwebm/common
+    ${CMAKE_SOURCE_DIR}/src/libwebm/mkvparser
+    ${CMAKE_SOURCE_DIR}/src/libwebm/mkvmuxer
 )
 
 # Sources
