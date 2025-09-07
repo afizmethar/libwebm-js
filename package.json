@@ -1,0 +1,46 @@
+{
+    "name": "@sctg/libwebms-js",
+    "version": "1.0.0",
+    "description": "WebAssembly bindings for libwebm",
+    "type": "module",
+    "main": "dist/wrapper.js",
+    "types": "dist/libwebm.d.ts",
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "emcmake cmake . && emmake make",
+        "clean": "rm -rf build dist Makefile CMakeFiles CMakeCache.txt cmake_install.cmake libwebm.js libwebm.wasm libwebm.d.ts type_definition.d.ts",
+        "prepare": "npm run build",
+        "pretest": "npm run build",
+        "test": "node test/libwebm-tests.js",
+        "test:watch": "nodemon test/libwebm-tests.js"
+    },
+    "keywords": [
+        "webm",
+        "wasm",
+        "libwebm"
+    ],
+    "author": "Ronan LE MEILLAT for SCTG",
+    "license": "BSD-3-Clause",
+    "devDependencies": {
+        "@babel/preset-typescript": "^7.26.0",
+        "@types/jest": "^29.5.14",
+        "@types/node": "^22.13.5",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.2.6",
+        "typescript": "^5.7.3"
+    },
+    "engines": {
+        "node": ">=22.0.0"
+    },
+    "publishConfig": {
+        "access": "public",
+        "tag": "latest"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/sctg-development/libwebm-js.git"
+    },
+    "dependencies": {}
+}

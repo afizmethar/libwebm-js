@@ -1,0 +1,25 @@
+{
+    "configurations": [
+        {
+            "name": "Emscripten",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/libwebm",
+                "${workspaceFolder}/libwebm/common",
+                "${workspaceFolder}/libwebm/mkvparser",
+                "${workspaceFolder}/libwebm/mkvmuxer",
+                "/usr/local/include",
+                "/opt/homebrew/include"
+            ],
+            "defines": [
+                "__EMSCRIPTEN__",
+                "WEBM_EXPORTS"
+            ],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64"
+        }
+    ],
+    "version": 4
+}
