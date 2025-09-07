@@ -745,5 +745,5 @@ BSD 3-Clause License. See LICENSE file for details.
 ## See Also
 
 - [libwebm](https://chromium.googlesource.com/webm/libwebm) - Original C++ library
-- [LibWebMSwift](../ios/LibWebMSwift/) - Swift bindings for iOS/macOS
+- [LibWebMSwift](https://github.com/sctg-development/libwebm-swift) - Swift bindings for iOS/macOS
 - [WebM Project](https://www.webmproject.org/) - WebM format specification
