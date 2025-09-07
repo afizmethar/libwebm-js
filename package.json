@@ -1,5 +1,5 @@
 {
-    "name": "@sctg/libwebms-js",
+    "name": "@sctg/libwebm-js",
     "version": "1.0.0",
     "description": "WebAssembly bindings for libwebm",
     "type": "module",
