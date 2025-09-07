@@ -30,6 +30,15 @@
 import Module from '../dist/libwebm.js';
 
 /**
+ * Detect the runtime environment
+ */
+const ENVIRONMENT_IS_WEB = typeof window === "object";
+const ENVIRONMENT_IS_WORKER = typeof WorkerGlobalScope !== "undefined" || typeof importScripts === "function";
+const ENVIRONMENT_IS_CLOUDFLARE_WORKER = typeof globalThis !== "undefined" &&
+    globalThis.navigator?.userAgent?.includes?.('Cloudflare-Workers');
+const ENVIRONMENT_IS_NODE = typeof process === "object" && process.versions?.node && process.type !== "renderer";
+
+/**
  * WebM Error Codes
  */
 const WebMErrorCode = {
@@ -407,21 +416,54 @@ class WebMFile {
  * Main factory function
  */
 async function createLibWebM(options = {}) {
-    const module = await Module(options);
+    try {
+        // Configure module options based on environment
+        const moduleOptions = { ...options };
 
-    return {
-        WebMErrorCode,
-        WebMTrackType,
-        WebMUtils,
-        WebMParser: {
-            createFromBuffer: (buffer) => WebMParser.createFromBuffer(module, buffer)
-        },
-        WebMMuxer: (options) => new WebMMuxer(module),
-        WebMFile,
+        // For Cloudflare Workers, we need to prevent Node.js-specific operations
+        if (ENVIRONMENT_IS_CLOUDFLARE_WORKER || ENVIRONMENT_IS_WORKER) {
+            // Disable file system operations
+            moduleOptions.noFSInit = true;
+            moduleOptions.locateFile = (path) => {
+                // Return the path as-is for WASM files in worker environments
+                if (path.endsWith('.wasm')) {
+                    return new URL(path, import.meta.url).href;
+                }
+                return path;
+            };
+        }
 
-        // Direct access to the native module if needed
-        _module: module
-    };
+        const module = await Module(moduleOptions);
+
+        return {
+            WebMErrorCode,
+            WebMTrackType,
+            WebMUtils,
+            WebMParser: {
+                createFromBuffer: (buffer) => WebMParser.createFromBuffer(module, buffer)
+            },
+            WebMMuxer: (options) => new WebMMuxer(module),
+            WebMFile,
+
+            // Direct access to the native module if needed
+            _module: module
+        };
+    } catch (error) {
+        // Provide more detailed error information for debugging
+        const errorDetails = {
+            message: error.message,
+            environment: {
+                isWeb: ENVIRONMENT_IS_WEB,
+                isWorker: ENVIRONMENT_IS_WORKER,
+                isCloudflareWorker: ENVIRONMENT_IS_CLOUDFLARE_WORKER,
+                isNode: ENVIRONMENT_IS_NODE
+            },
+            originalError: error
+        };
+
+        console.error('Failed to initialize LibWebM:', errorDetails);
+        throw new Error(`LibWebM initialization failed: ${error.message}`);
+    }
 }
 
 export default createLibWebM;

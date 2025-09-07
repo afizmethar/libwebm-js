@@ -93,6 +93,7 @@ install(FILES
     ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/libwebm.wasm
     ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/libwebm.d.ts
     ${CMAKE_SOURCE_DIR}/src/wrapper.js
+    ${CMAKE_SOURCE_DIR}/src/wrapper-worker.js
     DESTINATION ${CMAKE_SOURCE_DIR}/dist
     OPTIONAL
 )
@@ -101,6 +102,7 @@ add_custom_command(
     TARGET libwebm POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_SOURCE_DIR}/dist
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/wrapper.js ${CMAKE_SOURCE_DIR}/dist/wrapper.js
-    COMMENT "Copying wrapper.js to dist directory"
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/src/wrapper-worker.js ${CMAKE_SOURCE_DIR}/dist/wrapper-worker.js
+    COMMENT "Copying wrapper files to dist directory"
     VERBATIM
 )
