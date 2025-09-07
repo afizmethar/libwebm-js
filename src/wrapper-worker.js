@@ -124,11 +124,11 @@ class MinimalWebMParser {
      */
     readVint() {
         if (this.pos >= this.buffer.length) return null;
-        
+
         const firstByte = this.buffer[this.pos];
         let length = 0;
         let mask = 0x80;
-        
+
         // Find the length based on the first bit set
         for (let i = 0; i < 8; i++) {
             if (firstByte & mask) {
@@ -137,15 +137,15 @@ class MinimalWebMParser {
             }
             mask >>= 1;
         }
-        
+
         if (length === 0 || this.pos + length > this.buffer.length) return null;
-        
+
         // Read the value
         let value = firstByte & (mask - 1);
         for (let i = 1; i < length; i++) {
             value = (value << 8) | this.buffer[this.pos + i];
         }
-        
+
         this.pos += length;
         return { value, length };
     }
@@ -156,16 +156,16 @@ class MinimalWebMParser {
     readElement() {
         const id = this.readVint();
         if (!id) return null;
-        
+
         const size = this.readVint();
         if (!size) return null;
-        
+
         const dataStart = this.pos;
         const dataEnd = Math.min(this.pos + size.value, this.buffer.length);
         const data = this.buffer.slice(dataStart, dataEnd);
-        
+
         this.pos = dataEnd;
-        
+
         return {
             id: id.value,
             size: size.value,
@@ -228,7 +228,7 @@ class MinimalWebMParser {
      */
     parseSegment(segmentData) {
         const parser = new MinimalWebMParser(segmentData);
-        
+
         while (parser.pos < segmentData.length) {
             const element = parser.readElement();
             if (!element) break;
@@ -249,7 +249,7 @@ class MinimalWebMParser {
      */
     parseSegmentInfo(infoData) {
         const parser = new MinimalWebMParser(infoData);
-        
+
         while (parser.pos < infoData.length) {
             const element = parser.readElement();
             if (!element) break;
@@ -270,7 +270,7 @@ class MinimalWebMParser {
      */
     parseTracks(tracksData) {
         const parser = new MinimalWebMParser(tracksData);
-        
+
         while (parser.pos < tracksData.length) {
             const element = parser.readElement();
             if (!element) break;
@@ -295,7 +295,7 @@ class MinimalWebMParser {
             codecId: 'unknown',
             name: ''
         };
-        
+
         while (parser.pos < trackData.length) {
             const element = parser.readElement();
             if (!element) break;
@@ -361,17 +361,17 @@ function validateWebMBasic(buffer) {
     try {
         const parser = new MinimalWebMParser(buffer);
         const metadata = parser.parse();
-        return { 
-            valid: true, 
+        return {
+            valid: true,
             metadata: metadata,
             duration: metadata.duration,
             trackCount: metadata.tracks.length,
             tracks: metadata.tracks
         };
     } catch (error) {
-        return { 
-            valid: false, 
-            error: error.message 
+        return {
+            valid: false,
+            error: error.message
         };
     }
 }
@@ -420,11 +420,11 @@ class WebMFile {
             console.warn('No metadata available - file not parsed');
             return 0;
         }
-        
+
         // Convert from timecode units to seconds
         const durationInTimecodes = this.metadata.duration;
         const timecodeScale = this.metadata.timecodeScale || 1000000; // Default 1ms
-        
+
         // Duration is in timecode scale units, convert to seconds
         return (durationInTimecodes * timecodeScale) / 1000000000; // Convert to seconds
     }
@@ -437,7 +437,7 @@ class WebMFile {
             console.warn('No metadata available - file not parsed');
             return 0;
         }
-        
+
         return this.metadata.tracks.length;
     }
 
@@ -454,7 +454,7 @@ class WebMFile {
                 name: ''
             };
         }
-        
+
         return this.metadata.tracks[trackIndex];
     }
 
@@ -463,9 +463,9 @@ class WebMFile {
      */
     hasOpusAudio() {
         if (!this.metadata || !this.metadata.tracks) return false;
-        
-        return this.metadata.tracks.some(track => 
-            track.trackType === WebMTrackType.AUDIO && 
+
+        return this.metadata.tracks.some(track =>
+            track.trackType === WebMTrackType.AUDIO &&
             track.codecId === 'A_OPUS'
         );
     }
@@ -475,18 +475,18 @@ class WebMFile {
      */
     getSummary() {
         if (!this.metadata) return null;
-        
+
         const hasVideo = this.metadata.tracks.some(t => t.trackType === WebMTrackType.VIDEO);
         const hasAudio = this.metadata.tracks.some(t => t.trackType === WebMTrackType.AUDIO);
-        
+
         return {
             duration: this.getDuration(),
             trackCount: this.getTrackCount(),
             hasVideo,
             hasAudio,
             tracks: this.metadata.tracks.map(track => ({
-                type: track.trackType === WebMTrackType.VIDEO ? 'video' : 
-                      track.trackType === WebMTrackType.AUDIO ? 'audio' : 'unknown',
+                type: track.trackType === WebMTrackType.VIDEO ? 'video' :
+                    track.trackType === WebMTrackType.AUDIO ? 'audio' : 'unknown',
                 codec: track.codecId
             }))
         };
