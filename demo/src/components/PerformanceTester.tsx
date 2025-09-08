@@ -62,23 +62,6 @@ import {
 // Import libwebm-js
 import createLibWebM from '@sctg/libwebm-js';
 
-// Type declaration for libwebm-js
-declare module '@sctg/libwebm-js' {
-    export default function createLibWebM(options?: any): Promise<{
-        WebMErrorCode: any;
-        WebMTrackType: any;
-        WebMUtils: any;
-        WebMFile: any;
-        WebMParser: {
-            createFromBuffer(buffer: ArrayBuffer | Uint8Array): Promise<any>;
-        };
-        WebMMuxer: () => any;
-        _isWorker: boolean;
-        _isFallback: boolean;
-        _module: any;
-    }>;
-}
-
 
 /**
  * Props for the PerformanceTester component
