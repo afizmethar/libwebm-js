@@ -105,18 +105,28 @@ const WebMUtils = {
 };
 
 /**
- * Minimal WebM parser for worker environments
- * Implements basic EBML parsing to extract essential metadata
+ * Enhanced WebM parser for worker environments with frame extraction support
+ * Limited to 64MB files for memory constraints in worker environments
  */
 class MinimalWebMParser {
     constructor(buffer) {
+        // Check file size limit (64MB)
+        const MAX_FILE_SIZE = 64 * 1024 * 1024; // 64MB
+        if (buffer.length > MAX_FILE_SIZE) {
+            throw new Error(`File size ${buffer.length} bytes exceeds maximum allowed size of ${MAX_FILE_SIZE} bytes (64MB) for worker environments`);
+        }
+
         this.buffer = buffer;
         this.pos = 0;
         this.metadata = {
             duration: 0,
             tracks: [],
-            timecodeScale: 1000000 // Default WebM timecode scale (1ms)
+            timecodeScale: 1000000, // Default WebM timecode scale (1ms)
+            clusters: [], // Store cluster information
+            frames: [] // Store extracted frames
         };
+        this.currentCluster = null;
+        this.frameIndex = 0;
     }
 
     /**
@@ -281,6 +291,11 @@ class MinimalWebMParser {
                     // console.log('🔍 Found Tracks');
                     this.parseTracks(element.data);
                     break;
+                case 0x1F43B675: // Cluster
+                case 0x0F43B675: // Cluster (alternative parsing)
+                    // console.log('🔍 Found Cluster');
+                    this.parseCluster(element.data);
+                    break;
             }
         }
     }    /**
@@ -331,7 +346,164 @@ class MinimalWebMParser {
         }
 
         // console.log(`🔍 Total tracks found: ${this.metadata.tracks.length}`);
-    }    /**
+    }
+
+    /**
+     * Parse cluster content to extract frames
+     */
+    parseCluster(clusterData) {
+        const parser = new MinimalWebMParser(clusterData);
+        let clusterTimecode = 0;
+
+        // console.log(`🔍 Parsing cluster data (${clusterData.length} bytes)`);
+
+        while (parser.pos < clusterData.length) {
+            const element = parser.readElement();
+            if (!element) break;
+
+            // console.log(`🔍 Cluster element: 0x${element.id.toString(16).padStart(8, '0')} (${element.size} bytes)`);
+
+            switch (element.id) {
+                case 0xE7: // Timecode
+                    clusterTimecode = this.readUint(element.data);
+                    // console.log(`🔍 Cluster timecode: ${clusterTimecode}`);
+                    break;
+                case 0xA3: // SimpleBlock
+                    this.parseSimpleBlock(element.data, clusterTimecode);
+                    break;
+                case 0xA0: // BlockGroup
+                    this.parseBlockGroup(element.data, clusterTimecode);
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Parse SimpleBlock element
+     */
+    parseSimpleBlock(blockData, clusterTimecode) {
+        if (blockData.length < 4) return;
+
+        // Read track number (first byte, variable length)
+        const trackNumber = blockData[0] & 0x7F; // Remove most significant bit
+        let offset = 1;
+
+        // Read timecode (signed 16-bit integer, relative to cluster timecode)
+        const relativeTimecode = this.readInt16(blockData, offset);
+        offset += 2;
+
+        // Read flags
+        const flags = blockData[offset];
+        offset += 1;
+
+        const isKeyframe = (flags & 0x80) !== 0;
+        const isInvisible = (flags & 0x08) !== 0;
+
+        // Remaining data is the frame data
+        const frameData = blockData.slice(offset);
+
+        // Calculate absolute timecode in nanoseconds
+        const absoluteTimecode = (clusterTimecode + relativeTimecode) * this.metadata.timecodeScale;
+
+        // Store frame information
+        const frame = {
+            trackNumber: trackNumber,
+            timestampNs: absoluteTimecode,
+            data: frameData,
+            isKeyframe: isKeyframe,
+            isInvisible: isInvisible,
+            frameType: 'video' // Assume video for now, could be determined from track info
+        };
+
+        this.metadata.frames.push(frame);
+        // console.log(`🔍 Extracted frame: track ${trackNumber}, timecode ${absoluteTimecode}ns, size ${frameData.length} bytes`);
+    }
+
+    /**
+     * Parse BlockGroup element (contains Block and optional BlockAdditions)
+     */
+    parseBlockGroup(blockGroupData, clusterTimecode) {
+        const parser = new MinimalWebMParser(blockGroupData);
+
+        while (parser.pos < blockGroupData.length) {
+            const element = parser.readElement();
+            if (!element) break;
+
+            if (element.id === 0xA1) { // Block
+                this.parseBlock(element.data, clusterTimecode);
+            }
+            // Other elements in BlockGroup (BlockAdditions, etc.) are ignored for now
+        }
+    }
+
+    /**
+     * Parse Block element (similar to SimpleBlock but without flags in first byte)
+     */
+    parseBlock(blockData, clusterTimecode) {
+        if (blockData.length < 3) return;
+
+        // Read track number (variable length EBML integer)
+        let offset = 0;
+        const vint = this.readVintFromBuffer(blockData, offset);
+        if (!vint) return;
+        const trackNumber = vint.value;
+        offset += vint.length;
+
+        // Read timecode (signed 16-bit integer, relative to cluster timecode)
+        const relativeTimecode = this.readInt16(blockData, offset);
+        offset += 2;
+
+        // Remaining data is the frame data
+        const frameData = blockData.slice(offset);
+
+        // Calculate absolute timecode in nanoseconds
+        const absoluteTimecode = (clusterTimecode + relativeTimecode) * this.metadata.timecodeScale;
+
+        // Store frame information (assume video and keyframe for Block elements)
+        const frame = {
+            trackNumber: trackNumber,
+            timestampNs: absoluteTimecode,
+            data: frameData,
+            isKeyframe: true, // Block elements are typically keyframes
+            isInvisible: false,
+            frameType: 'video'
+        };
+
+        this.metadata.frames.push(frame);
+        // console.log(`🔍 Extracted block frame: track ${trackNumber}, timecode ${absoluteTimecode}ns, size ${frameData.length} bytes`);
+    }
+
+    /**
+     * Read EBML variable-length integer from buffer at specific offset
+     */
+    readVintFromBuffer(buffer, offset) {
+        if (offset >= buffer.length) return null;
+
+        const firstByte = buffer[offset];
+        let length = 0;
+        let mask = 0x80;
+
+        // Find the length based on the first bit set
+        for (let i = 0; i < 8; i++) {
+            if (firstByte & mask) {
+                length = i + 1;
+                break;
+            }
+            mask >>= 1;
+        }
+
+        if (length === 0 || offset + length > buffer.length) return null;
+
+        // Read the value
+        let value = firstByte & (mask - 1);
+        for (let i = 1; i < length; i++) {
+            value = (value << 8) | buffer[offset + i];
+        }
+
+        return { value, length };
+    }
+
+    /**
      * Parse individual track entry
      */
     parseTrackEntry(trackData) {
@@ -388,6 +560,30 @@ class MinimalWebMParser {
     }
 
     /**
+     * Read signed integer from data (two's complement)
+     */
+    readInt(data) {
+        const uintValue = this.readUint(data);
+        const bitLength = data.length * 8;
+
+        // Check if the most significant bit is set (negative number)
+        if (uintValue & (1 << (bitLength - 1))) {
+            // Convert from two's complement
+            return uintValue - (1 << bitLength);
+        }
+        return uintValue;
+    }
+
+    /**
+     * Read signed 16-bit integer from data
+     */
+    readInt16(data, offset = 0) {
+        if (data.length < offset + 2) return 0;
+        const view = new DataView(data.buffer, data.byteOffset + offset, 2);
+        return view.getInt16(0, false); // Big endian
+    }
+
+    /**
      * Read float from data (IEEE 754)
      */
     readFloat(data) {
@@ -409,6 +605,64 @@ class MinimalWebMParser {
     readString(data) {
         return new TextDecoder('utf-8').decode(data);
     }
+
+    /**
+     * Get the number of frames in the file
+     */
+    getFrameCount() {
+        return this.metadata.frames.length;
+    }
+
+    /**
+     * Get frame at specific index
+     */
+    getFrame(index) {
+        if (index < 0 || index >= this.metadata.frames.length) {
+            return null;
+        }
+        return this.metadata.frames[index];
+    }
+
+    /**
+     * Read next video frame for a specific track
+     */
+    readNextVideoFrame(trackIndex) {
+        if (this.frameIndex >= this.metadata.frames.length) {
+            return null;
+        }
+
+        // Find next frame for the specified track
+        while (this.frameIndex < this.metadata.frames.length) {
+            const frame = this.metadata.frames[this.frameIndex];
+            this.frameIndex++;
+
+            // Check if this frame belongs to the requested track
+            if (frame.trackNumber === trackIndex + 1) { // trackIndex is 0-based
+                return {
+                    timestampNs: frame.timestampNs,
+                    data: frame.data,
+                    isKeyframe: frame.isKeyframe,
+                    trackNumber: frame.trackNumber
+                };
+            }
+        }
+
+        return null; // No more frames for this track
+    }
+
+    /**
+     * Reset frame reading position
+     */
+    resetFramePosition() {
+        this.frameIndex = 0;
+    }
+
+    /**
+     * Get frames for a specific track
+     */
+    getFramesForTrack(trackIndex) {
+        return this.metadata.frames.filter(frame => frame.trackNumber === trackIndex + 1);
+    }
 }
 
 /**
@@ -422,8 +676,9 @@ function validateWebMBasic(buffer) {
             valid: true,
             metadata: metadata,
             duration: metadata.duration,
-            trackCount: metadata.tracks.length,
-            tracks: metadata.tracks
+            trackCount: metadata.tracks ? metadata.tracks.length : 0,
+            tracks: metadata.tracks || [],
+            frameCount: metadata.frames ? metadata.frames.length : 0
         };
     } catch (error) {
         return {
@@ -491,7 +746,12 @@ class WebMFile {
      */
     getTrackCount() {
         if (!this.metadata) {
-            console.warn('No metadata available - file not parsed');
+            console.warn('WebMFile.getTrackCount(): No metadata available - file not parsed');
+            return 0;
+        }
+
+        if (!Array.isArray(this.metadata.tracks)) {
+            console.warn('WebMFile.getTrackCount(): metadata.tracks is not an array', this.metadata.tracks);
             return 0;
         }
 
@@ -548,6 +808,141 @@ class WebMFile {
             }))
         };
     }
+
+    /**
+     * Get the number of frames in the file
+     */
+    getFrameCount() {
+        if (!this.metadata) return 0;
+        return this.metadata.frames ? this.metadata.frames.length : 0;
+    }
+
+    /**
+     * Read next video frame for a specific track
+     */
+    readNextVideoFrame(trackIndex) {
+        if (!this.metadata || !this.metadata.frames) return null;
+
+        // Initialize frame reading position if not exists
+        if (typeof this.frameIndex === 'undefined') {
+            this.frameIndex = 0;
+        }
+
+        if (this.frameIndex >= this.metadata.frames.length) {
+            return null;
+        }
+
+        // Find next frame for the specified track
+        while (this.frameIndex < this.metadata.frames.length) {
+            const frame = this.metadata.frames[this.frameIndex];
+            this.frameIndex++;
+
+            // Check if this frame belongs to the requested track
+            if (frame.trackNumber === trackIndex + 1) { // trackIndex is 0-based
+                return {
+                    timestampNs: frame.timestampNs,
+                    data: frame.data,
+                    isKeyframe: frame.isKeyframe,
+                    trackNumber: frame.trackNumber
+                };
+            }
+        }
+
+        return null; // No more frames for this track
+    }
+
+    /**
+     * Reset frame reading position
+     */
+    resetFramePosition() {
+        this.frameIndex = 0;
+    }
+
+    /**
+     * Get all frames for a specific track
+     */
+    getFramesForTrack(trackIndex) {
+        if (!this.metadata || !this.metadata.frames) return [];
+        return this.metadata.frames.filter(frame => frame.trackNumber === trackIndex + 1);
+    }
+}
+
+/**
+ * WebMParser compatible class for worker environments
+ * Provides the same interface as the full WebMParser but uses WebMFile internally
+ */
+class WebMParserWorker {
+    constructor(webmFile) {
+        this.webmFile = webmFile;
+    }
+
+    /**
+     * Create parser from buffer (static method)
+     */
+    static async createFromBuffer(buffer) {
+        const webmFile = await WebMFile.fromBuffer(buffer);
+        return new WebMParserWorker(webmFile);
+    }
+
+    /**
+     * Parse headers (no-op in worker mode since parsing is done during construction)
+     */
+    parseHeaders() {
+        // Parsing is already done during WebMFile.fromBuffer()
+        // This method exists for API compatibility
+    }
+
+    /**
+     * Get duration
+     */
+    getDuration() {
+        return this.webmFile.getDuration();
+    }
+
+    /**
+     * Get track count
+     */
+    getTrackCount() {
+        console.log('WebMParserWorker.getTrackCount(): Called');
+        const result = this.webmFile.getTrackCount();
+        console.log(`WebMParserWorker.getTrackCount(): Returning ${result}`);
+        return result;
+    }
+
+    /**
+     * Get track info
+     */
+    getTrackInfo(trackIndex) {
+        return this.webmFile.getTrackInfo(trackIndex);
+    }
+
+    /**
+     * Read next video frame
+     */
+    readNextVideoFrame(trackIndex) {
+        return this.webmFile.readNextVideoFrame(trackIndex);
+    }
+
+    /**
+     * Reset frame position
+     */
+    resetFramePosition() {
+        return this.webmFile.resetFramePosition();
+    }
+
+    /**
+     * Get frame count
+     */
+    getFrameCount() {
+        return this.webmFile.getFrameCount();
+    }
+
+    /**
+     * Get frames for track
+     */
+    getFramesForTrack(trackIndex) {
+        return this.webmFile.getFramesForTrack(trackIndex);
+    }
 }
 
 /**
@@ -573,7 +968,7 @@ async function createLibWebM(options = {}) {
 
             // For compatibility
             WebMParser: {
-                createFromBuffer: (buffer) => WebMFile.fromBuffer(buffer, null)
+                createFromBuffer: (buffer) => WebMParserWorker.createFromBuffer(buffer)
             },
             WebMMuxer: () => {
                 throw new Error('WebM muxing not supported in worker environment');
@@ -600,7 +995,7 @@ async function createLibWebM(options = {}) {
             WebMFile,
 
             WebMParser: {
-                createFromBuffer: (buffer) => WebMFile.fromBuffer(buffer, null)
+                createFromBuffer: (buffer) => WebMParserWorker.createFromBuffer(buffer)
             },
             WebMMuxer: () => {
                 throw new Error('WebM muxing not supported in fallback mode');

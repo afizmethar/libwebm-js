@@ -711,6 +711,114 @@ function writeFrame(frameData, timestamp, isKeyframe) {
 const finalData = file.finalize();
 ```
 
+## Live Demo
+
+🚀 **Try libwebm-js in your browser!**
+
+A comprehensive interactive demo is available at: **[https://sctg-development.github.io/libwebm-js](https://sctg-development.github.io/libwebm-js)**
+
+### Demo Features
+
+The live demo showcases all major libwebm-js capabilities with a modern, responsive web interface built using:
+
+- **React 19.1.1** - Latest React with modern hooks and concurrent features
+- **HeroUI 2.8.0** - Beautiful and accessible component library
+- **Tailwind CSS 4.1.12** - Utility-first CSS framework
+- **Vite 7.1.1** - Fast build tool and development server
+- **TypeScript** - Full type safety and excellent developer experience
+
+### Interactive Examples
+
+#### 📁 WebM File Parser
+- **File Upload**: Drag & drop or click to upload WebM files
+- **Real-time Parsing**: Instant analysis of file structure and metadata
+- **Format Validation**: Automatic detection of supported codecs and formats
+- **Error Handling**: Clear error messages for unsupported files
+
+#### 🎵 Track Information Display
+- **Detailed Metadata**: Complete track information including codec details
+- **Video Parameters**: Resolution, frame rate, and codec information
+- **Audio Parameters**: Sample rate, channels, and bit depth
+- **Multi-track Support**: Handle files with multiple video/audio tracks
+
+#### 🎬 Frame Extraction
+- **Frame-by-Frame Analysis**: Extract and examine individual frames
+- **Timing Information**: Precise timestamp data for each frame
+- **Keyframe Detection**: Identify keyframes for efficient seeking
+- **Performance Metrics**: Real-time extraction speed and memory usage
+
+#### 🎞️ WebM Muxer Demo
+- **Track Configuration**: Set up video and audio tracks with custom parameters
+- **Codec Selection**: Choose from supported VP8, VP9, AV1, Opus, and Vorbis
+- **Frame Writing**: Simulate writing frames with proper timing
+- **Output Generation**: Create WebM files with real muxing logic
+
+#### ⚡ Performance Testing
+- **Benchmark Suite**: Comprehensive performance tests
+- **Memory Monitoring**: Track memory usage during operations
+- **Concurrent Operations**: Test multi-threaded performance
+- **Detailed Reports**: Performance ratings and optimization suggestions
+
+### Demo Architecture
+
+The demo is built with a modular component architecture:
+
+```
+demo/src/
+├── components/
+│   ├── WebMFileParser.tsx     # File upload and parsing interface
+│   ├── TrackInfoDisplay.tsx   # Track metadata visualization
+│   ├── FrameExtractor.tsx     # Frame extraction controls
+│   ├── MuxerDemo.tsx         # WebM creation interface
+│   ├── PerformanceTester.tsx # Performance benchmarking
+│   └── index.ts              # Component exports
+├── App.tsx                   # Main application with tabbed interface
+├── main.tsx                  # Application entry point
+├── vite-env.d.ts            # TypeScript environment declarations
+└── index.css                # Tailwind CSS configuration
+```
+
+### Running the Demo Locally
+
+```bash
+# Clone the repository
+git clone https://github.com/sctg-development/libwebm-js.git
+cd libwebm-js/demo
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm run dev
+
+# Open http://localhost:5173 in your browser
+```
+
+### Demo vs Production Code
+
+**Note**: The demo currently uses simulated operations for demonstration purposes. The actual libwebm-js library provides:
+
+- Real WebM parsing and muxing capabilities
+- Full WASM-powered performance
+- Production-ready error handling
+- Complete TypeScript type definitions
+- Memory-efficient streaming operations
+
+The demo serves as a comprehensive showcase of the API and user experience, while the production library in `dist/` contains the actual compiled WASM bindings.
+
+### Browser Compatibility
+
+The demo works in all modern browsers that support:
+- WebAssembly (WASM)
+- ES2020 features
+- Modern JavaScript APIs
+
+**Supported Browsers:**
+- Chrome 57+
+- Firefox 52+
+- Safari 11+
+- Edge 16+
+
 ## Building from Source
 
 The build process:
