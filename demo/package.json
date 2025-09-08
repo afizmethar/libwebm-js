@@ -38,7 +38,7 @@
     "@heroui/tooltip": "^2.2.22",
     "@react-aria/visually-hidden": "^3.8.27",
     "@react-types/shared": "^3.32.0",
-    "@sctg/libwebm-js": "^1.0.4",
+    "@sctg/libwebm-js": "^1.0.5",
     "@tailwindcss/postcss": "^4.1.12",
     "framer-motion": "^12.23.12",
     "react": "^19.1.1",
