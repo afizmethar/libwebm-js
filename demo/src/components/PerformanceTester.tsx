@@ -62,6 +62,23 @@ import {
 // Import libwebm-js
 import createLibWebM from '@sctg/libwebm-js';
 
+// Type declaration for libwebm-js
+declare module '@sctg/libwebm-js' {
+    export default function createLibWebM(options?: any): Promise<{
+        WebMErrorCode: any;
+        WebMTrackType: any;
+        WebMUtils: any;
+        WebMFile: any;
+        WebMParser: {
+            createFromBuffer(buffer: ArrayBuffer | Uint8Array): Promise<any>;
+        };
+        WebMMuxer: () => any;
+        _isWorker: boolean;
+        _isFallback: boolean;
+        _module: any;
+    }>;
+}
+
 
 /**
  * Props for the PerformanceTester component
@@ -101,15 +118,19 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
   const [isRunning, setIsRunning] = useState(false);
   const [currentTest, setCurrentTest] = useState<string>('');
   const [libwebm, setLibwebm] = useState<any>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // Initialize libwebm-js on component mount
   useEffect(() => {
     const initializeLibWebM = async () => {
       try {
+        setIsInitializing(true);
         const libwebmInstance = await createLibWebM();
         setLibwebm(libwebmInstance);
       } catch (error) {
         onError(`Failed to initialize libwebm-js: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+        setIsInitializing(false);
       }
     };
 
@@ -120,6 +141,11 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
    * Runs a comprehensive performance test suite
    */
   const runPerformanceTests = useCallback(async () => {
+    if (!libwebm) {
+      onError('Performance test failed: libwebm-js not initialized');
+      return;
+    }
+
     setIsRunning(true);
     setResults([]);
     onLoading(true);
@@ -156,7 +182,7 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
       setIsRunning(false);
       onLoading(false);
     }
-  }, [onError, onLoading]);
+  }, [onError, onLoading, libwebm]);
 
   /**
    * Tests file parsing performance using real libwebm-js
@@ -180,7 +206,7 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
 
     // Parse the file multiple times to measure performance
     for (let i = 0; i < iterations; i++) {
-      const parser = libwebm.WebMParser.createFromBuffer(buffer);
+      const parser = await libwebm.WebMParser.createFromBuffer(buffer);
       parser.parseHeaders();
       // Access some properties to ensure parsing is complete
       parser.getTrackCount();
@@ -221,7 +247,7 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
     const buffer = new Uint8Array(arrayBuffer);
 
     // Create parser directly from buffer
-    const parser = libwebm.WebMParser.createFromBuffer(buffer);
+    const parser = await libwebm.WebMParser.createFromBuffer(buffer);
     parser.parseHeaders();
 
     // Find the first video track
@@ -291,7 +317,7 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
       const arrayBuffer = await response.arrayBuffer();
       const buffer = new Uint8Array(arrayBuffer);
 
-      const parser = libwebm.WebMParser.createFromBuffer(buffer);
+      const parser = await libwebm.WebMParser.createFromBuffer(buffer);
       parser.parseHeaders();
       parsers.push(parser);
 
@@ -343,7 +369,7 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
         const arrayBuffer = await response.arrayBuffer();
         const buffer = new Uint8Array(arrayBuffer);
 
-        const parser = libwebm.WebMParser.createFromBuffer(buffer);
+        const parser = await libwebm.WebMParser.createFromBuffer(buffer);
         parser.parseHeaders();
         // Perform some operations on the file
         parser.getTrackCount();
@@ -442,9 +468,9 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
               color="primary"
               onClick={runPerformanceTests}
               isLoading={isRunning}
-              disabled={isRunning}
+              disabled={isRunning || isInitializing || !libwebm}
             >
-              {isRunning ? 'Running Tests...' : 'Run Performance Tests'}
+              {isRunning ? 'Running Tests...' : isInitializing ? 'Initializing...' : 'Run Performance Tests'}
             </Button>
             {results.length > 0 && (
               <Button
@@ -457,6 +483,21 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
               </Button>
             )}
           </div>
+
+          {/* Initialization Status */}
+          {isInitializing && (
+            <div className="space-y-2">
+              <Progress
+                size="md"
+                isIndeterminate
+                color="secondary"
+                className="w-full"
+              />
+              <p className="text-sm text-gray-600 text-center">
+                Initializing libwebm-js...
+              </p>
+            </div>
+          )}
 
           {/* Current Test Progress */}
           {isRunning && currentTest && (
