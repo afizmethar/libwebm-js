@@ -44,7 +44,7 @@ jobs:
         # You can change the base path to your repository name
         run: |
           cd demo
-          npm run build
+          npx vite build --base=/${{ github.event.repository.name }}
 
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
