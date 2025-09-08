@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>libwebm-js Worker Environment Tests</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+        }
+        .test-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+        .test-status {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-running { background: #cce7ff; color: #004085; }
+        .status-passed { background: #d4edda; color: #155724; }
+        .status-failed { background: #f8d7da; color: #721c24; }
+        .test-results {
+            background: #f8f9fa;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .test-result {
+            margin: 5px 0;
+            padding: 2px 0;
+        }
+        .result-passed { color: #28a745; }
+        .result-failed { color: #dc3545; }
+        .controls {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 0 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .summary {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        .summary h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 libwebm-js Worker Environment Tests</h1>
+
+        <div class="controls">
+            <button id="runTests" onclick="runTests()">Run All Tests</button>
+            <button id="clearResults" onclick="clearResults()">Clear Results</button>
+        </div>
+
+        <div id="testContainer">
+            <!-- Test sections will be added here -->
+        </div>
+
+        <div class="summary" id="summary" style="display: none;">
+            <h3>Test Summary</h3>
+            <div id="summaryContent"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import createLibWebM from '../src/wrapper-worker.js';
+
+        class TestRunner {
+            constructor() {
+                this.libwebm = null;
+                this.testSections = {};
+                this.currentTest = null;
+                this.testResults = [];
+            }
+
+            createTestSection(name, description) {
+                const section = document.createElement('div');
+                section.className = 'test-section';
+                section.id = `test-${name}`;
+
+                section.innerHTML = `
+                    <div class="test-header">
+                        <div class="test-title">${name}</div>
+                        <div class="test-status status-pending" id="status-${name}">PENDING</div>
+                    </div>
+                    <div class="test-description">${description}</div>
+                    <div class="test-results" id="results-${name}" style="display: none;"></div>
+                `;
+
+                document.getElementById('testContainer').appendChild(section);
+                this.testSections[name] = section;
+                return section;
+            }
+
+            updateTestStatus(name, status, message = '') {
+                const statusEl = document.getElementById(`status-${name}`);
+                const resultsEl = document.getElementById(`results-${name}`);
+
+                statusEl.className = `test-status status-${status.toLowerCase()}`;
+                statusEl.textContent = status;
+
+                if (message) {
+                    resultsEl.style.display = 'block';
+                    resultsEl.innerHTML += `<div class="test-result result-${status.toLowerCase()}">${message}</div>`;
+                }
+            }
+
+            log(message, success = true) {
+                const status = success ? 'passed' : 'failed';
+                this.testResults.push({ message, success });
+
+                if (this.currentTest) {
+                    this.updateTestStatus(this.currentTest, success ? 'PASSED' : 'FAILED', message);
+                }
+
+                console.log(`${success ? '✅' : '❌'} ${message}`);
+            }
+
+            async setup() {
+                this.updateTestStatus('setup', 'RUNNING');
+                this.currentTest = 'setup';
+
+                try {
+                    this.libwebm = await createLibWebM();
+                    this.log('libwebm-js initialized successfully');
+                    this.updateTestStatus('setup', 'PASSED');
+                    return true;
+                } catch (error) {
+                    this.log(`Setup failed: ${error.message}`, false);
+                    this.updateTestStatus('setup', 'FAILED');
+                    return false;
+                }
+            }
+
+            async testEnvironmentDetection() {
+                this.currentTest = 'environment';
+                this.updateTestStatus('environment', 'RUNNING');
+
+                // Test worker environment detection
+                const isWebWorker = typeof WorkerGlobalScope !== "undefined" ||
+                    typeof importScripts === "function";
+
+                const isCloudflareWorker = typeof globalThis !== "undefined" &&
+                    (globalThis.navigator?.userAgent?.includes?.('Cloudflare-Workers') ||
+                        typeof caches !== 'undefined');
+
+                const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
+                const isNode = typeof process !== "undefined" && process.versions && process.versions.node;
+
+                const detectedEnvs = [isWebWorker, isCloudflareWorker, isBrowser, isNode].filter(Boolean);
+
+                if (detectedEnvs.length > 0) {
+                    this.log(`Environment detected: ${detectedEnvs.length} environment(s)`);
+                } else {
+                    this.log('No environment detected', false);
+                }
+
+                this.updateTestStatus('environment', 'PASSED');
+            }
+
+            async testBasicInitialization() {
+                this.currentTest = 'initialization';
+                this.updateTestStatus('initialization', 'RUNNING');
+
+                if (!this.libwebm) {
+                    this.log('libwebm not initialized', false);
+                    this.updateTestStatus('initialization', 'FAILED');
+                    return;
+                }
+
+                const expectedProperties = [
+                    'WebMErrorCode', 'WebMTrackType', 'WebMUtils',
+                    'WebMFile', 'WebMParser', 'WebMMuxer'
+                ];
+
+                for (const prop of expectedProperties) {
+                    if (this.libwebm[prop] !== undefined) {
+                        this.log(`Property ${prop} available`);
+                    } else {
+                        this.log(`Property ${prop} missing`, false);
+                    }
+                }
+
+                this.updateTestStatus('initialization', 'PASSED');
+            }
+
+            async testWebMUtils() {
+                this.currentTest = 'utils';
+                this.updateTestStatus('utils', 'RUNNING');
+
+                if (!this.libwebm || !this.libwebm.WebMUtils) {
+                    this.log('WebMUtils not available', false);
+                    this.updateTestStatus('utils', 'FAILED');
+                    return;
+                }
+
+                const utils = this.libwebm.WebMUtils;
+
+                if (utils.isVideoCodecSupported('V_VP8')) {
+                    this.log('VP8 video codec support detected');
+                } else {
+                    this.log('VP8 video codec support missing', false);
+                }
+
+                if (utils.isAudioCodecSupported('A_OPUS')) {
+                    this.log('Opus audio codec support detected');
+                } else {
+                    this.log('Opus audio codec support missing', false);
+                }
+
+                this.updateTestStatus('utils', 'PASSED');
+            }
+
+            async testMinimalParser() {
+                this.currentTest = 'parser';
+                this.updateTestStatus('parser', 'RUNNING');
+
+                try {
+                    const minimalWebM = this.createMinimalWebMBuffer();
+                    const parser = await this.libwebm.WebMParser.createFromBuffer(minimalWebM);
+
+                    if (parser) {
+                        this.log('Parser created successfully');
+                        parser.parseHeaders();
+                        this.log('Parser headers parsed');
+                    } else {
+                        this.log('Parser creation failed', false);
+                    }
+
+                    this.updateTestStatus('parser', 'PASSED');
+                } catch (error) {
+                    this.log(`Parser test failed: ${error.message}`, false);
+                    this.updateTestStatus('parser', 'FAILED');
+                }
+            }
+
+            async testMuxer() {
+                this.currentTest = 'muxer';
+                this.updateTestStatus('muxer', 'RUNNING');
+
+                try {
+                    const muxer = this.libwebm.WebMMuxer();
+
+                    if (muxer) {
+                        this.log('Muxer created successfully');
+
+                        const videoTrackId = muxer.addVideoTrack(1920, 1080, 'V_VP8');
+                        const audioTrackId = muxer.addAudioTrack(48000, 2, 'A_OPUS');
+
+                        const videoFrame = new Uint8Array(1024);
+                        const audioFrame = new Uint8Array(256);
+
+                        muxer.writeVideoFrame(videoTrackId, videoFrame, 0, true);
+                        muxer.writeAudioFrame(audioTrackId, audioFrame, 0);
+
+                        const webmData = muxer.finalize();
+                        if (webmData && webmData.length > 0) {
+                            this.log(`WebM file created, size: ${webmData.length} bytes`);
+                        } else {
+                            this.log('WebM finalization failed', false);
+                        }
+                    }
+
+                    this.updateTestStatus('muxer', 'PASSED');
+                } catch (error) {
+                    this.log(`Muxer test failed: ${error.message}`, false);
+                    this.updateTestStatus('muxer', 'FAILED');
+                }
+            }
+
+            createMinimalWebMBuffer() {
+                const buffer = new Uint8Array(1024);
+                buffer[0] = 0x1A; buffer[1] = 0x45; buffer[2] = 0xDF; buffer[3] = 0xA3;
+                return buffer;
+            }
+
+            updateSummary() {
+                const passed = this.testResults.filter(r => r.success).length;
+                const total = this.testResults.length;
+
+                const summaryEl = document.getElementById('summary');
+                const summaryContentEl = document.getElementById('summaryContent');
+
+                summaryContentEl.innerHTML = `
+                    <div style="font-size: 24px; margin: 10px 0;">
+                        ${passed}/${total} tests passed
+                    </div>
+                    <div style="color: ${passed === total ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                        ${passed === total ? '🎉 All tests passed!' : '❌ Some tests failed'}
+                    </div>
+                `;
+
+                summaryEl.style.display = 'block';
+            }
+
+            async runAllTests() {
+                // Create test sections
+                this.createTestSection('setup', 'Initialize libwebm-js in worker environment');
+                this.createTestSection('environment', 'Detect and validate worker environment');
+                this.createTestSection('initialization', 'Test basic initialization and API availability');
+                this.createTestSection('utils', 'Test WebM utility functions');
+                this.createTestSection('parser', 'Test WebM parser functionality');
+                this.createTestSection('muxer', 'Test WebM muxer functionality');
+
+                // Enable run button
+                document.getElementById('runTests').disabled = false;
+
+                const setupSuccess = await this.setup();
+                if (!setupSuccess) return;
+
+                await this.testEnvironmentDetection();
+                await this.testBasicInitialization();
+                await this.testWebMUtils();
+                await this.testMinimalParser();
+                await this.testMuxer();
+
+                this.updateSummary();
+            }
+        }
+
+        const testRunner = new TestRunner();
+
+        window.runTests = async () => {
+            document.getElementById('runTests').disabled = true;
+            await testRunner.runAllTests();
+            document.getElementById('runTests').disabled = false;
+        };
+
+        window.clearResults = () => {
+            document.getElementById('testContainer').innerHTML = '';
+            document.getElementById('summary').style.display = 'none';
+            testRunner.testResults = [];
+            testRunner.testSections = {};
+        };
+
+        // Auto-run tests when page loads
+        window.addEventListener('load', () => {
+            testRunner.runAllTests();
+        });
+    </script>
+</body>
+</html>
