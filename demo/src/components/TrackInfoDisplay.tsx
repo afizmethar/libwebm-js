@@ -29,7 +29,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
     Table,
     TableHeader,
@@ -108,6 +108,8 @@ export const TrackInfoDisplay: React.FC<TrackInfoDisplayProps> = ({
   const [tracks, setTracks] = useState<TrackInfo[]>([]);
   const [isLoadingTracks, setIsLoadingTracks] = useState(false);
   const [libwebm, setLibwebm] = useState<any>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize libwebm-js on component mount
   useEffect(() => {
@@ -124,10 +126,10 @@ export const TrackInfoDisplay: React.FC<TrackInfoDisplayProps> = ({
   }, [onError]);
 
   /**
-   * Loads track information from a real WebM file
-   * Uses libwebm-js to parse actual WebM file data
+   * Loads track information from a WebM buffer
+   * @param buffer - The WebM file buffer to parse
    */
-  const loadSampleTracks = useCallback(async () => {
+  const loadTracksFromBuffer = useCallback(async (buffer: Uint8Array) => {
     if (!libwebm) {
       onError('libwebm-js is not initialized');
       return;
@@ -137,15 +139,6 @@ export const TrackInfoDisplay: React.FC<TrackInfoDisplayProps> = ({
     onLoading(true);
 
     try {
-      // Load sample WebM file from public/samples directory
-      const response = await fetch('/samples/sample.webm');
-      if (!response.ok) {
-        throw new Error(`Failed to load sample file: ${response.status}`);
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = new Uint8Array(arrayBuffer);
-
       // Parse WebM file using libwebm-js
       const webmFile = await libwebm.WebMFile.fromBuffer(buffer, libwebm);
 
@@ -207,10 +200,70 @@ export const TrackInfoDisplay: React.FC<TrackInfoDisplayProps> = ({
   }, [libwebm, onError, onLoading]);
 
   /**
-   * Clears the current track information
+   * Loads track information from the sample WebM file
    */
-  const clearTracks = useCallback(() => {
+  const loadSampleTracks = useCallback(async () => {
+    try {
+      // Load sample WebM file from public/samples directory
+      const response = await fetch('/samples/sample.webm');
+      if (!response.ok) {
+        throw new Error(`Failed to load sample file: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = new Uint8Array(arrayBuffer);
+
+      await loadTracksFromBuffer(buffer);
+    } catch (error) {
+      onError(`Failed to load sample file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [loadTracksFromBuffer, onError]);
+
+  /**
+   * Loads track information from a selected file
+   */
+  const loadTracksFromFile = useCallback(async (file: File) => {
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = new Uint8Array(arrayBuffer);
+
+      await loadTracksFromBuffer(buffer);
+    } catch (error) {
+      onError(`Failed to load file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }, [loadTracksFromBuffer, onError]);
+
+  /**
+   * Handles file selection
+   */
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!file.name.toLowerCase().endsWith('.webm')) {
+        onError('Please select a WebM file (.webm)');
+        return;
+      }
+      setSelectedFile(file);
+      loadTracksFromFile(file);
+    }
+  }, [onError, loadTracksFromFile]);
+
+  /**
+   * Opens the file selector
+   */
+  const openFileSelector = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  /**
+   * Clears the selected file and tracks
+   */
+  const clearFile = useCallback(() => {
+    setSelectedFile(null);
     setTracks([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, []);
 
   /**
@@ -262,25 +315,65 @@ export const TrackInfoDisplay: React.FC<TrackInfoDisplayProps> = ({
         <CardBody className="space-y-4">
           {/* Action Buttons */}
           <div className="flex gap-2">
-            <Button
-              color="primary"
-              onClick={loadSampleTracks}
-              isLoading={isLoadingTracks}
-              disabled={isLoadingTracks}
-            >
-              {isLoadingTracks ? 'Loading...' : 'Load Sample Tracks'}
-            </Button>
-            {tracks.length > 0 && (
+            {!selectedFile ? (
+              <>
+                <Button
+                  color="primary"
+                  onClick={openFileSelector}
+                  disabled={isLoadingTracks}
+                >
+                  Select WebM File
+                </Button>
+                <Button
+                  color="secondary"
+                  variant="flat"
+                  onClick={loadSampleTracks}
+                  isLoading={isLoadingTracks}
+                  disabled={isLoadingTracks}
+                >
+                  {isLoadingTracks ? 'Loading...' : 'Load Sample'}
+                </Button>
+              </>
+            ) : (
               <Button
-                color="secondary"
-                variant="flat"
-                onClick={clearTracks}
+                color="primary"
+                onClick={openFileSelector}
                 disabled={isLoadingTracks}
               >
-                Clear
+                Change File
+              </Button>
+            )}
+            {(tracks.length > 0 || selectedFile) && (
+              <Button
+                color="danger"
+                variant="flat"
+                onClick={clearFile}
+                disabled={isLoadingTracks}
+              >
+                Clear All
               </Button>
             )}
           </div>
+
+          {/* Selected File Info */}
+          {selectedFile && (
+            <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
+              <span className="text-sm text-blue-700">Selected file:</span>
+              <span className="text-sm font-medium text-blue-900">{selectedFile.name}</span>
+              <span className="text-xs text-blue-600">
+                ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+              </span>
+            </div>
+          )}
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".webm"
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
 
           {/* Track Information Table */}
           {tracks.length > 0 && (

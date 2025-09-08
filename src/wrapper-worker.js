@@ -310,10 +310,10 @@ class MinimalWebMParser {
 
             switch (element.id) {
                 case 0x2AD7B1: // TimecodeScale
-                    this.metadata.timecodeScale = this.readUint(element.data);
+                    this.metadata.timecodeScale = parser.readUint(element.data);
                     break;
                 case 0x4489: // Duration (float)
-                    this.metadata.duration = this.readFloat(element.data);
+                    this.metadata.duration = parser.readFloat(element.data);
                     break;
             }
         }
@@ -335,7 +335,7 @@ class MinimalWebMParser {
 
             if (element.id === 0xAE) { // TrackEntry
                 // console.log('🔍 Found TrackEntry');
-                const track = this.parseTrackEntry(element.data);
+                const track = this.parseTrackEntry(element.data, parser);
                 if (track) {
                     // console.log(`🔍 Track parsed successfully: ${JSON.stringify(track)}`);
                     this.metadata.tracks.push(track);
@@ -346,6 +346,53 @@ class MinimalWebMParser {
         }
 
         // console.log(`🔍 Total tracks found: ${this.metadata.tracks.length}`);
+    }
+
+    /**
+     * Parse individual track entry
+     */
+    parseTrackEntry(trackData, parser) {
+        const track = {
+            trackNumber: 0,
+            trackType: WebMTrackType.UNKNOWN,
+            codecId: 'unknown',
+            name: ''
+        };
+
+        // console.log(`🔍 Parsing TrackEntry (${trackData.length} bytes)`);
+
+        while (parser.pos < trackData.length) {
+            const element = parser.readElement();
+            if (!element) break;
+
+            // console.log(`🔍 TrackEntry element: 0x${element.id.toString(16).padStart(8, '0')} (${element.size} bytes)`);
+
+            switch (element.id) {
+                case 0xD7: // TrackNumber
+                    track.trackNumber = parser.readUint(element.data);
+                    break;
+                case 0x83: // TrackNumber (alternative)
+                    track.trackNumber = parser.readUint(element.data);
+                    break;
+                case 0x86: // CodecID
+                    track.codecId = parser.readString(element.data);
+                    break;
+                case 0x536E: // Name
+                    track.name = parser.readString(element.data);
+                    break;
+            }
+        }
+
+        // Determine track type based on codec
+        if (track.codecId.startsWith('V_')) {
+            track.trackType = WebMTrackType.VIDEO;
+        } else if (track.codecId.startsWith('A_')) {
+            track.trackType = WebMTrackType.AUDIO;
+        }
+
+        // console.log(`🔍 Track parsed: ${JSON.stringify(track)}`);
+
+        return track.trackNumber > 0 ? track : null;
     }
 
     /**
@@ -365,14 +412,14 @@ class MinimalWebMParser {
 
             switch (element.id) {
                 case 0xE7: // Timecode
-                    clusterTimecode = this.readUint(element.data);
+                    clusterTimecode = parser.readUint(element.data);
                     // console.log(`🔍 Cluster timecode: ${clusterTimecode}`);
                     break;
                 case 0xA3: // SimpleBlock
-                    this.parseSimpleBlock(element.data, clusterTimecode);
+                    this.parseSimpleBlock(element.data, clusterTimecode, parser);
                     break;
                 case 0xA0: // BlockGroup
-                    this.parseBlockGroup(element.data, clusterTimecode);
+                    this.parseBlockGroup(element.data, clusterTimecode, parser);
                     break;
             }
         }
@@ -381,7 +428,7 @@ class MinimalWebMParser {
     /**
      * Parse SimpleBlock element
      */
-    parseSimpleBlock(blockData, clusterTimecode) {
+    parseSimpleBlock(blockData, clusterTimecode, parser) {
         if (blockData.length < 4) return;
 
         // Read track number (first byte, variable length)
@@ -389,7 +436,7 @@ class MinimalWebMParser {
         let offset = 1;
 
         // Read timecode (signed 16-bit integer, relative to cluster timecode)
-        const relativeTimecode = this.readInt16(blockData, offset);
+        const relativeTimecode = parser.readInt16(blockData, offset);
         offset += 2;
 
         // Read flags
@@ -422,15 +469,15 @@ class MinimalWebMParser {
     /**
      * Parse BlockGroup element (contains Block and optional BlockAdditions)
      */
-    parseBlockGroup(blockGroupData, clusterTimecode) {
-        const parser = new MinimalWebMParser(blockGroupData);
+    parseBlockGroup(blockGroupData, clusterTimecode, parser) {
+        const blockParser = new MinimalWebMParser(blockGroupData);
 
-        while (parser.pos < blockGroupData.length) {
-            const element = parser.readElement();
+        while (blockParser.pos < blockGroupData.length) {
+            const element = blockParser.readElement();
             if (!element) break;
 
             if (element.id === 0xA1) { // Block
-                this.parseBlock(element.data, clusterTimecode);
+                this.parseBlock(element.data, clusterTimecode, parser);
             }
             // Other elements in BlockGroup (BlockAdditions, etc.) are ignored for now
         }
@@ -439,18 +486,18 @@ class MinimalWebMParser {
     /**
      * Parse Block element (similar to SimpleBlock but without flags in first byte)
      */
-    parseBlock(blockData, clusterTimecode) {
+    parseBlock(blockData, clusterTimecode, parser) {
         if (blockData.length < 3) return;
 
         // Read track number (variable length EBML integer)
         let offset = 0;
-        const vint = this.readVintFromBuffer(blockData, offset);
+        const vint = parser.readVintFromBuffer(blockData, offset);
         if (!vint) return;
         const trackNumber = vint.value;
         offset += vint.length;
 
         // Read timecode (signed 16-bit integer, relative to cluster timecode)
-        const relativeTimecode = this.readInt16(blockData, offset);
+        const relativeTimecode = parser.readInt16(blockData, offset);
         offset += 2;
 
         // Remaining data is the frame data
@@ -695,6 +742,7 @@ class WebMFile {
     constructor() {
         this.isWorkerFallback = true;
         this.metadata = null;
+        this.frameIndex = 0;
     }
 
     /**
@@ -957,8 +1005,10 @@ async function createLibWebM(options = {}) {
     const isWebWorker = typeof WorkerGlobalScope !== "undefined" ||
         typeof importScripts === "function";
 
-    if (isCloudflareWorker || isWebWorker) {
-        console.log('LibWebM running in worker mode with minimal parser. Muxing features are not available.');
+    const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
+
+    if (isCloudflareWorker || isWebWorker || isBrowser) {
+        console.log('LibWebM running in worker/browser mode with minimal parser. Muxing features are not available.');
 
         return {
             WebMErrorCode,
@@ -971,7 +1021,7 @@ async function createLibWebM(options = {}) {
                 createFromBuffer: (buffer) => WebMParserWorker.createFromBuffer(buffer)
             },
             WebMMuxer: () => {
-                throw new Error('WebM muxing not supported in worker environment');
+                throw new Error('WebM muxing not supported in worker/browser environment');
             },
 
             // Indicate this is a worker implementation

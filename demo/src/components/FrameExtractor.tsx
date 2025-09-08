@@ -144,7 +144,7 @@ export const FrameExtractor: React.FC<FrameExtractorProps> = ({
       const buffer = new Uint8Array(arrayBuffer);
 
       // Create parser directly from buffer
-      const parser = libwebm.WebMParser.createFromBuffer(buffer);
+      const parser = await libwebm.WebMParser.createFromBuffer(buffer);
 
       // Check if we're in worker mode by trying to call parseHeaders
       const isWorkerMode = typeof parser.parseHeaders !== 'function';
