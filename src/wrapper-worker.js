@@ -710,6 +710,592 @@ class MinimalWebMParser {
     getFramesForTrack(trackIndex) {
         return this.metadata.frames.filter(frame => frame.trackNumber === trackIndex + 1);
     }
+
+    /**
+     * Write EBML variable-length integer to buffer
+     */
+    writeVint(value) {
+        if (value < 0x80) {
+            this.buffer.push(value | 0x80);
+        } else if (value < 0x4000) {
+            this.buffer.push((value >> 8) | 0x40);
+            this.buffer.push(value & 0xFF);
+        } else if (value < 0x200000) {
+            this.buffer.push((value >> 16) | 0x20);
+            this.buffer.push((value >> 8) & 0xFF);
+            this.buffer.push(value & 0xFF);
+        } else if (value < 0x10000000) {
+            this.buffer.push((value >> 24) | 0x10);
+            this.buffer.push((value >> 16) & 0xFF);
+            this.buffer.push((value >> 8) & 0xFF);
+            this.buffer.push(value & 0xFF);
+        } else {
+            this.buffer.push(0x08);
+            this.buffer.push((value >> 24) & 0xFF);
+            this.buffer.push((value >> 16) & 0xFF);
+            this.buffer.push((value >> 8) & 0xFF);
+            this.buffer.push(value & 0xFF);
+        }
+    }
+
+    /**
+     * Write EBML element ID to buffer
+     */
+    writeElementId(id) {
+        if (id < 0x100) {
+            this.buffer.push(id | 0x80);
+        } else if (id < 0x10000) {
+            this.buffer.push((id >> 8) | 0x40);
+            this.buffer.push(id & 0xFF);
+        } else if (id < 0x1000000) {
+            this.buffer.push((id >> 16) | 0x20);
+            this.buffer.push((id >> 8) & 0xFF);
+            this.buffer.push(id & 0xFF);
+        } else {
+            this.buffer.push((id >> 24) | 0x10);
+            this.buffer.push((id >> 16) & 0xFF);
+            this.buffer.push((id >> 8) & 0xFF);
+            this.buffer.push(id & 0xFF);
+        }
+    }
+
+    /**
+     * Write unsigned integer to buffer
+     */
+    writeUint(value, byteLength = 1) {
+        for (let i = byteLength - 1; i >= 0; i--) {
+            this.buffer.push((value >> (i * 8)) & 0xFF);
+        }
+    }
+
+    /**
+     * Write string to buffer
+     */
+    writeString(str) {
+        for (let i = 0; i < str.length; i++) {
+            this.buffer.push(str.charCodeAt(i));
+        }
+    }
+
+    /**
+     * Write float (32-bit) to buffer
+     */
+    writeFloat32(value) {
+        const view = new DataView(new ArrayBuffer(4));
+        view.setFloat32(0, value, false); // Big endian
+        for (let i = 0; i < 4; i++) {
+            this.buffer.push(view.getUint8(i));
+        }
+    }
+
+    /**
+     * Write float (64-bit) to buffer
+     */
+    writeFloat64(value) {
+        const view = new DataView(new ArrayBuffer(8));
+        view.setFloat64(0, value, false); // Big endian
+        for (let i = 0; i < 8; i++) {
+            this.buffer.push(view.getUint8(i));
+        }
+    }
+
+    /**
+     * Write data array to buffer
+     */
+    writeData(data) {
+        if (data instanceof Uint8Array) {
+            this.buffer.push(...data);
+        } else if (Array.isArray(data)) {
+            this.buffer.push(...data);
+        } else {
+            throw new Error('Unsupported data type for writing');
+        }
+    }
+}
+
+/**
+ * Minimal WebM Muxer for worker environments
+ * Creates WebM files by writing EBML elements directly
+ */
+class MinimalWebMMuxer {
+    constructor() {
+        this.buffer = [];
+        this.tracks = [];
+        this.clusters = [];
+        this.currentCluster = null;
+        this.timecodeScale = 1000000; // Default 1ms
+        this.nextTrackId = 1;
+        this.writtenHeader = false;
+    }
+
+    /**
+     * Write EBML variable-length integer to buffer
+     */
+    writeVint(value) {
+        if (value < 0x80) {
+            this.buffer.push(value | 0x80);
+        } else if (value < 0x4000) {
+            this.buffer.push((value >> 8) | 0x40);
+            this.buffer.push(value & 0xFF);
+        } else if (value < 0x200000) {
+            this.buffer.push((value >> 16) | 0x20);
+            this.buffer.push((value >> 8) & 0xFF);
+            this.buffer.push(value & 0xFF);
+        } else if (value < 0x10000000) {
+            this.buffer.push((value >> 24) | 0x10);
+            this.buffer.push((value >> 16) & 0xFF);
+            this.buffer.push((value >> 8) & 0xFF);
+            this.buffer.push(value & 0xFF);
+        } else {
+            this.buffer.push(0x08);
+            this.buffer.push((value >> 24) & 0xFF);
+            this.buffer.push((value >> 16) & 0xFF);
+            this.buffer.push((value >> 8) & 0xFF);
+            this.buffer.push(value & 0xFF);
+        }
+    }
+
+    /**
+     * Write EBML element ID to buffer
+     */
+    writeElementId(id) {
+        if (id < 0x100) {
+            this.buffer.push(id | 0x80);
+        } else if (id < 0x10000) {
+            this.buffer.push((id >> 8) | 0x40);
+            this.buffer.push(id & 0xFF);
+        } else if (id < 0x1000000) {
+            this.buffer.push((id >> 16) | 0x20);
+            this.buffer.push((id >> 8) & 0xFF);
+            this.buffer.push(id & 0xFF);
+        } else {
+            this.buffer.push((id >> 24) | 0x10);
+            this.buffer.push((id >> 16) & 0xFF);
+            this.buffer.push((id >> 8) & 0xFF);
+            this.buffer.push(id & 0xFF);
+        }
+    }
+
+    /**
+     * Write unsigned integer to buffer
+     */
+    writeUint(value, byteLength = 1) {
+        for (let i = byteLength - 1; i >= 0; i--) {
+            this.buffer.push((value >> (i * 8)) & 0xFF);
+        }
+    }
+
+    /**
+     * Write string to buffer
+     */
+    writeString(str) {
+        for (let i = 0; i < str.length; i++) {
+            this.buffer.push(str.charCodeAt(i));
+        }
+    }
+
+    /**
+     * Write float (32-bit) to buffer
+     */
+    writeFloat32(value) {
+        const view = new DataView(new ArrayBuffer(4));
+        view.setFloat32(0, value, false); // Big endian
+        for (let i = 0; i < 4; i++) {
+            this.buffer.push(view.getUint8(i));
+        }
+    }
+
+    /**
+     * Write float (64-bit) to buffer
+     */
+    writeFloat64(value) {
+        const view = new DataView(new ArrayBuffer(8));
+        view.setFloat64(0, value, false); // Big endian
+        for (let i = 0; i < 8; i++) {
+            this.buffer.push(view.getUint8(i));
+        }
+    }
+
+    /**
+     * Write data array to buffer
+     */
+    writeData(data) {
+        if (data instanceof Uint8Array) {
+            this.buffer.push(...data);
+        } else if (Array.isArray(data)) {
+            this.buffer.push(...data);
+        } else {
+            throw new Error('Unsupported data type for writing');
+        }
+    }
+
+    /**
+     * Add a video track to the WebM file
+     */
+    addVideoTrack(width, height, codecId = 'V_VP8') {
+        const trackId = this.nextTrackId++;
+        const track = {
+            id: trackId,
+            type: WebMTrackType.VIDEO,
+            codecId: codecId,
+            width: width,
+            height: height,
+            name: `Video Track ${trackId}`
+        };
+        this.tracks.push(track);
+        return trackId;
+    }
+
+    /**
+     * Add an audio track to the WebM file
+     */
+    addAudioTrack(samplingFrequency, channels, codecId = 'A_OPUS') {
+        const trackId = this.nextTrackId++;
+        const track = {
+            id: trackId,
+            type: WebMTrackType.AUDIO,
+            codecId: codecId,
+            samplingFrequency: samplingFrequency,
+            channels: channels,
+            name: `Audio Track ${trackId}`
+        };
+        this.tracks.push(track);
+        return trackId;
+    }
+
+    /**
+     * Write EBML header
+     */
+    writeEBMLHeader() {
+        // EBML element (0x1A45DFA3)
+        this.writeElementId(0x1A45DFA3);
+        this.writeVint(30); // Size
+
+        // EBMLVersion (0x4286)
+        this.writeElementId(0x4286);
+        this.writeVint(1);
+        this.writeUint(1);
+
+        // EBMLReadVersion (0x42F7)
+        this.writeElementId(0x42F7);
+        this.writeVint(1);
+        this.writeUint(1);
+
+        // EBMLMaxIDLength (0x42F2)
+        this.writeElementId(0x42F2);
+        this.writeVint(1);
+        this.writeUint(4);
+
+        // EBMLMaxSizeLength (0x42F3)
+        this.writeElementId(0x42F3);
+        this.writeVint(1);
+        this.writeUint(8);
+
+        // DocType (0x4282)
+        this.writeElementId(0x4282);
+        this.writeVint(4);
+        this.writeString('webm');
+
+        // DocTypeVersion (0x4287)
+        this.writeElementId(0x4287);
+        this.writeVint(1);
+        this.writeUint(2);
+
+        // DocTypeReadVersion (0x4285)
+        this.writeElementId(0x4285);
+        this.writeVint(1);
+        this.writeUint(2);
+    }
+
+    /**
+     * Write segment info
+     */
+    writeSegmentInfo() {
+        // SegmentInfo element (0x1549A966)
+        this.writeElementId(0x1549A966);
+        this.writeVint(20); // Size
+
+        // TimecodeScale (0x2AD7B1)
+        this.writeElementId(0x2AD7B1);
+        this.writeVint(4);
+        this.writeUint(this.timecodeScale, 4);
+
+        // Duration (0x4489) - placeholder, will be updated when finalizing
+        this.writeElementId(0x4489);
+        this.writeVint(8);
+        this.writeFloat64(0); // Placeholder
+    }
+
+    /**
+     * Write tracks
+     */
+    writeTracks() {
+        // Tracks element (0x1654AE6B)
+        this.writeElementId(0x1654AE6B);
+        let tracksSize = 0;
+
+        // Calculate size of all tracks
+        for (const track of this.tracks) {
+            tracksSize += this.calculateTrackSize(track);
+        }
+
+        this.writeVint(tracksSize);
+
+        // Write each track
+        for (const track of this.tracks) {
+            this.writeTrack(track);
+        }
+    }
+
+    /**
+     * Calculate the size of a track entry
+     */
+    calculateTrackSize(track) {
+        let size = 0;
+        // TrackEntry (0xAE)
+        size += 1; // Element ID
+        size += 1; // Vint size
+
+        // TrackNumber (0xD7)
+        size += 1 + 1 + 1; // ID + size + value
+
+        // TrackType (0x83)
+        size += 1 + 1 + 1; // ID + size + value
+
+        // CodecID (0x86)
+        size += 1 + 1 + track.codecId.length; // ID + size + string
+
+        // Name (0x536E)
+        size += 1 + 1 + track.name.length; // ID + size + string
+
+        if (track.type === WebMTrackType.VIDEO) {
+            // Video element (0xE0)
+            size += 1 + 1; // ID + size
+            // Width (0xB0)
+            size += 1 + 1 + 2; // ID + size + value
+            // Height (0xBA)
+            size += 1 + 1 + 2; // ID + size + value
+        } else if (track.type === WebMTrackType.AUDIO) {
+            // Audio element (0xE1)
+            size += 1 + 1; // ID + size
+            // SamplingFrequency (0xB5)
+            size += 1 + 1 + 8; // ID + size + value
+            // Channels (0x9F)
+            size += 1 + 1 + 1; // ID + size + value
+        }
+
+        return size;
+    }
+
+    /**
+     * Write a track entry
+     */
+    writeTrack(track) {
+        // TrackEntry (0xAE)
+        this.writeElementId(0xAE);
+        this.writeVint(this.calculateTrackSize(track) - 2); // Size minus ID and size bytes
+
+        // TrackNumber (0xD7)
+        this.writeElementId(0xD7);
+        this.writeVint(1);
+        this.writeUint(track.id);
+
+        // TrackType (0x83)
+        this.writeElementId(0x83);
+        this.writeVint(1);
+        this.writeUint(track.type);
+
+        // CodecID (0x86)
+        this.writeElementId(0x86);
+        this.writeVint(track.codecId.length);
+        this.writeString(track.codecId);
+
+        // Name (0x536E)
+        this.writeElementId(0x536E);
+        this.writeVint(track.name.length);
+        this.writeString(track.name);
+
+        if (track.type === WebMTrackType.VIDEO) {
+            // Video element (0xE0)
+            this.writeElementId(0xE0);
+            this.writeVint(8); // Size
+
+            // Width (0xB0)
+            this.writeElementId(0xB0);
+            this.writeVint(2);
+            this.writeUint(track.width, 2);
+
+            // Height (0xBA)
+            this.writeElementId(0xBA);
+            this.writeVint(2);
+            this.writeUint(track.height, 2);
+        } else if (track.type === WebMTrackType.AUDIO) {
+            // Audio element (0xE1)
+            this.writeElementId(0xE1);
+            this.writeVint(13); // Size
+
+            // SamplingFrequency (0xB5)
+            this.writeElementId(0xB5);
+            this.writeVint(8);
+            this.writeFloat64(track.samplingFrequency);
+
+            // Channels (0x9F)
+            this.writeElementId(0x9F);
+            this.writeVint(1);
+            this.writeUint(track.channels);
+        }
+    }
+
+    /**
+     * Write a video frame
+     */
+    writeVideoFrame(trackId, frameData, timestampNs, isKeyframe) {
+        if (!this.writtenHeader) {
+            this.writeHeader();
+        }
+
+        // Ensure we have a cluster for this timestamp
+        const clusterTimecode = Math.floor(timestampNs / this.timecodeScale);
+        if (!this.currentCluster || clusterTimecode >= this.currentCluster.timecode + 32768) {
+            this.finalizeCurrentCluster();
+            this.startNewCluster(clusterTimecode);
+        }
+
+        // Write SimpleBlock
+        this.writeElementId(0xA3);
+        const blockSize = 4 + frameData.length; // Track number + timecode + flags + data
+        this.writeVint(blockSize);
+
+        // Track number (with keyframe flag)
+        const flags = isKeyframe ? 0x80 : 0x00;
+        this.writeUint(trackId | (isKeyframe ? 0x00 : 0x80)); // Set MSB for non-keyframe
+
+        // Relative timecode
+        const relativeTimecode = clusterTimecode - this.currentCluster.timecode;
+        this.writeUint(relativeTimecode, 2);
+
+        // Flags
+        this.writeUint(flags);
+
+        // Frame data
+        this.writeData(frameData);
+    }
+
+    /**
+     * Write an audio frame
+     */
+    writeAudioFrame(trackId, frameData, timestampNs) {
+        if (!this.writtenHeader) {
+            this.writeHeader();
+        }
+
+        // Ensure we have a cluster for this timestamp
+        const clusterTimecode = Math.floor(timestampNs / this.timecodeScale);
+        if (!this.currentCluster || clusterTimecode >= this.currentCluster.timecode + 32768) {
+            this.finalizeCurrentCluster();
+            this.startNewCluster(clusterTimecode);
+        }
+
+        // Write SimpleBlock for audio
+        this.writeElementId(0xA3);
+        const blockSize = 4 + frameData.length;
+        this.writeVint(blockSize);
+
+        // Track number
+        this.writeUint(trackId);
+
+        // Relative timecode
+        const relativeTimecode = clusterTimecode - this.currentCluster.timecode;
+        this.writeUint(relativeTimecode, 2);
+
+        // Flags (audio frames are typically not keyframes in the same way)
+        this.writeUint(0x00);
+
+        // Frame data
+        this.writeData(frameData);
+    }
+
+    /**
+     * Write the WebM header
+     */
+    writeHeader() {
+        this.writeEBMLHeader();
+        this.writeSegmentInfo();
+        this.writeTracks();
+        this.writtenHeader = true;
+    }
+
+    /**
+     * Start a new cluster
+     */
+    startNewCluster(timecode) {
+        this.currentCluster = {
+            timecode: timecode,
+            startPos: this.buffer.length,
+            size: 0
+        };
+        this.clusters.push(this.currentCluster);
+
+        // Cluster element (0x1F43B675)
+        this.writeElementId(0x1F43B675);
+        this.writeVint(0); // Placeholder size, will be updated
+
+        // Timecode (0xE7)
+        this.writeElementId(0xE7);
+        this.writeVint(2);
+        this.writeUint(timecode, 2);
+    }
+
+    /**
+     * Finalize the current cluster
+     */
+    finalizeCurrentCluster() {
+        if (this.currentCluster) {
+            const clusterEnd = this.buffer.length;
+            const clusterSize = clusterEnd - this.currentCluster.startPos - 6; // Subtract ID and size bytes
+
+            // Update cluster size (big endian)
+            const sizePos = this.currentCluster.startPos + 4; // Position after cluster ID
+            this.buffer[sizePos] = (clusterSize >> 24) & 0xFF;
+            this.buffer[sizePos + 1] = (clusterSize >> 16) & 0xFF;
+            this.buffer[sizePos + 2] = (clusterSize >> 8) & 0xFF;
+            this.buffer[sizePos + 3] = clusterSize & 0xFF;
+        }
+    }
+
+    /**
+     * Finalize the WebM file and return the data
+     */
+    finalize() {
+        // Finalize current cluster
+        this.finalizeCurrentCluster();
+
+        // Update duration in SegmentInfo
+        if (this.clusters.length > 0) {
+            const lastCluster = this.clusters[this.clusters.length - 1];
+            const duration = (lastCluster.timecode + 1000) * (this.timecodeScale / 1000000000); // Convert to seconds
+
+            // Find duration position (after TimecodeScale)
+            const durationPos = 4 + 30 + 4 + 4 + 4 + 8; // EBML + SegmentInfo + TimecodeScale + Duration ID + size
+            this.buffer[durationPos] = (duration >> 56) & 0xFF;
+            this.buffer[durationPos + 1] = (duration >> 48) & 0xFF;
+            this.buffer[durationPos + 2] = (duration >> 40) & 0xFF;
+            this.buffer[durationPos + 3] = (duration >> 32) & 0xFF;
+            this.buffer[durationPos + 4] = (duration >> 24) & 0xFF;
+            this.buffer[durationPos + 5] = (duration >> 16) & 0xFF;
+            this.buffer[durationPos + 6] = (duration >> 8) & 0xFF;
+            this.buffer[durationPos + 7] = duration & 0xFF;
+        }
+
+        return new Uint8Array(this.buffer);
+    }
+
+    /**
+     * Get current WebM data (before finalization)
+     */
+    getData() {
+        return new Uint8Array(this.buffer);
+    }
 }
 
 /**
@@ -743,6 +1329,7 @@ class WebMFile {
         this.isWorkerFallback = true;
         this.metadata = null;
         this.frameIndex = 0;
+        this.muxer = null; // For writing mode
     }
 
     /**
@@ -766,10 +1353,12 @@ class WebMFile {
     }
 
     /**
-     * Create new WebM file for writing (not supported in worker fallback)
+     * Create new WebM file for writing
      */
     static forWriting(module) {
-        throw new Error('WebM muxing is not supported in worker fallback mode. Use the full libwebm-js library in a Node.js environment.');
+        const file = new WebMFile();
+        file.muxer = new MinimalWebMMuxer();
+        return file;
     }
 
     /**
@@ -913,6 +1502,54 @@ class WebMFile {
         if (!this.metadata || !this.metadata.frames) return [];
         return this.metadata.frames.filter(frame => frame.trackNumber === trackIndex + 1);
     }
+
+    /**
+     * Add video track (muxing mode)
+     */
+    addVideoTrack(width, height, codecId) {
+        if (!this.muxer) throw new Error('No muxer available - file not in writing mode');
+        return this.muxer.addVideoTrack(width, height, codecId);
+    }
+
+    /**
+     * Add audio track (muxing mode)
+     */
+    addAudioTrack(samplingFrequency, channels, codecId) {
+        if (!this.muxer) throw new Error('No muxer available - file not in writing mode');
+        return this.muxer.addAudioTrack(samplingFrequency, channels, codecId);
+    }
+
+    /**
+     * Write video frame (muxing mode)
+     */
+    writeVideoFrame(trackId, frameData, timestampNs, isKeyframe) {
+        if (!this.muxer) throw new Error('No muxer available - file not in writing mode');
+        this.muxer.writeVideoFrame(trackId, frameData, timestampNs, isKeyframe);
+    }
+
+    /**
+     * Write audio frame (muxing mode)
+     */
+    writeAudioFrame(trackId, frameData, timestampNs) {
+        if (!this.muxer) throw new Error('No muxer available - file not in writing mode');
+        this.muxer.writeAudioFrame(trackId, frameData, timestampNs);
+    }
+
+    /**
+     * Finalize and get WebM data (muxing mode)
+     */
+    finalize() {
+        if (!this.muxer) throw new Error('No muxer available - file not in writing mode');
+        return this.muxer.finalize();
+    }
+
+    /**
+     * Get current WebM data (muxing mode)
+     */
+    getData() {
+        if (!this.muxer) throw new Error('No muxer available - file not in writing mode');
+        return this.muxer.getData();
+    }
 }
 
 /**
@@ -1007,8 +1644,10 @@ async function createLibWebM(options = {}) {
 
     const isBrowser = typeof window !== "undefined" && typeof document !== "undefined";
 
-    if (isCloudflareWorker || isWebWorker || isBrowser) {
-        console.log('LibWebM running in worker/browser mode with minimal parser. Muxing features are not available.');
+    const isNode = typeof process !== "undefined" && process.versions && process.versions.node;
+
+    if (isCloudflareWorker || isWebWorker || isBrowser || isNode) {
+        console.log('LibWebM running in worker/browser/Node.js mode with minimal parser and muxer support.');
 
         return {
             WebMErrorCode,
@@ -1020,13 +1659,11 @@ async function createLibWebM(options = {}) {
             WebMParser: {
                 createFromBuffer: (buffer) => WebMParserWorker.createFromBuffer(buffer)
             },
-            WebMMuxer: () => {
-                throw new Error('WebM muxing not supported in worker/browser environment');
-            },
+            WebMMuxer: () => new MinimalWebMMuxer(),
 
             // Indicate this is a worker implementation
             _isWorker: true,
-            _isFallback: false, // We have real parsing now
+            _isFallback: false,
             _module: null
         };
     }
@@ -1047,9 +1684,7 @@ async function createLibWebM(options = {}) {
             WebMParser: {
                 createFromBuffer: (buffer) => WebMParserWorker.createFromBuffer(buffer)
             },
-            WebMMuxer: () => {
-                throw new Error('WebM muxing not supported in fallback mode');
-            },
+            WebMMuxer: () => new MinimalWebMMuxer(),
 
             _isFallback: true,
             _module: null
