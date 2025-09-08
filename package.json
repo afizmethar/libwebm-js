@@ -1,6 +1,6 @@
 {
     "name": "@sctg/libwebm-js",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "description": "WebAssembly bindings for libwebm",
     "type": "module",
     "main": "dist/wrapper-worker.js",
@@ -11,8 +11,6 @@
     "scripts": {
         "build": "emcmake cmake . && emmake make",
         "clean": "rm -rf build dist Makefile CMakeFiles CMakeCache.txt cmake_install.cmake libwebm.js libwebm.wasm libwebm.d.ts type_definition.d.ts",
-        "prepare": "npm run build",
-        "pretest": "npm run build",
         "test": "node test/libwebm-tests.js && node test/run-worker-tests.js",
         "test:watch": "nodemon test/libwebm-tests.js"
     },
