@@ -36,6 +36,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          cd demo
           npm ci
 
       - name: Build project
