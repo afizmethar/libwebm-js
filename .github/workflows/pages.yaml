@@ -37,7 +37,8 @@ jobs:
       - name: Install dependencies
         run: |
           cd demo
-          npm ci
+          rm -rf package-lock.json
+          npm install
 
       - name: Build project
         # You can change the base path to your repository name
