@@ -36,6 +36,7 @@ declare const __VITE_VERSION__: string;
 declare const __TAILWINDCSS_VERSION__: string;
 declare const __REACT_VERSION__: string;
 declare const __HEROUI_VERSION__: string;
+declare const __BASE_PATH__: string;
 
 declare global {
   const __APP_VERSION__: string;
@@ -43,4 +44,5 @@ declare global {
   const __TAILWINDCSS_VERSION__: string;
   const __REACT_VERSION__: string;
   const __HEROUI_VERSION__: string;
+  const __BASE_PATH__: string;
 }

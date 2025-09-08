@@ -45,5 +45,6 @@ export default defineConfig({
     __TAILWINDCSS_VERSION__: JSON.stringify(packageJson.devDependencies['@tailwindcss/vite'].replace('^', '')),
     __REACT_VERSION__: JSON.stringify(packageJson.dependencies.react.replace('^', '')),
     __HEROUI_VERSION__: JSON.stringify("2.8.0"),
+    __BASE_PATH__: JSON.stringify(`/${process.env.GITHUB_REPOSITORY?.split('/')[1] || ''}/`),
   },
 })

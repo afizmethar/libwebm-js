@@ -205,7 +205,7 @@ export const TrackInfoDisplay: React.FC<TrackInfoDisplayProps> = ({
   const loadSampleTracks = useCallback(async () => {
     try {
       // Load sample WebM file from public/samples directory
-      const response = await fetch('/samples/sample.webm');
+      const response = await fetch(`${__BASE_PATH__}/samples/sample.webm`);
       if (!response.ok) {
         throw new Error(`Failed to load sample file: ${response.status}`);
       }

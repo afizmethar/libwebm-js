@@ -179,7 +179,7 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
     const startTime = performance.now();
 
     // Load sample WebM file
-    const response = await fetch('/samples/sample.webm');
+    const response = await fetch(`${__BASE_PATH__}/samples/sample.webm`);
     if (!response.ok) {
       throw new Error(`Failed to load sample file: ${response.status}`);
     }
@@ -221,7 +221,7 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
     }
 
     // Load sample WebM file
-    const response = await fetch('/samples/sample.webm');
+    const response = await fetch(`${__BASE_PATH__}/samples/sample.webm`);
     if (!response.ok) {
       throw new Error(`Failed to load sample file: ${response.status}`);
     }
@@ -292,7 +292,7 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
 
     // Load and parse multiple WebM files to test memory usage
     for (let i = 0; i < operations; i++) {
-      const response = await fetch('/samples/sample.webm');
+      const response = await fetch(`${__BASE_PATH__}/samples/sample.webm`);
       if (!response.ok) {
         throw new Error(`Failed to load sample file: ${response.status}`);
       }
@@ -344,7 +344,7 @@ export const PerformanceTester: React.FC<PerformanceTesterProps> = ({
       let operations = 0;
 
       for (let i = 0; i < operationsPerTask; i++) {
-        const response = await fetch('/samples/sample.webm');
+        const response = await fetch(`${__BASE_PATH__}/samples/sample.webm`);
         if (!response.ok) {
           throw new Error(`Failed to load sample file: ${response.status}`);
         }
