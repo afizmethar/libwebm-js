@@ -586,6 +586,55 @@ class WorkerEnvironmentTests {
     }
 
     /**
+     * Test parsing of WebClient file (test/webclient.webm)
+     */
+    async testWebClientFile() {
+        console.log('🧪 Testing WebClient file parsing...');
+
+        if (!this.libwebm) {
+            this.log('libwebm not initialized', false);
+            return;
+        }
+
+        try {
+            // Read the WebClient file directly instead of using embedded base64
+            const fs = await import('fs');
+            const webclientBuffer = fs.readFileSync('test/webclient.webm');
+
+            console.log(`📁 File size: ${webclientBuffer.length} bytes`);
+            console.log(`🔍 Header bytes: ${Array.from(webclientBuffer.slice(0, 20)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')}`);
+
+            // Test parsing with LibWebM-JS
+            const file = await this.libwebm.WebMFile.fromBuffer(webclientBuffer);
+            const trackCount = file.getTrackCount();
+            const duration = file.getDuration();
+
+            console.log(`🔍 LibWebM info - isWorker: ${this.libwebm._isWorker}, isFallback: ${this.libwebm._isFallback}`);
+            console.log(`📊 Parsed successfully - Duration: ${duration}s, Track count: ${trackCount}`);
+
+            // Validate results
+            if (trackCount > 0) {
+                let message = `WebClient file parsed successfully: ${trackCount} track(s) found, duration: ${duration}s`;
+
+                // Get track information
+                for (let i = 0; i < trackCount; i++) {
+                    const trackInfo = file.getTrackInfo(i);
+                    console.log(`🎵 Track ${i}: ${trackInfo.codecId} (${trackInfo.trackType === 1 ? 'Video' : trackInfo.trackType === 2 ? 'Audio' : 'Unknown'})`);
+                    message += ` | Track ${i}: ${trackInfo.codecId}`;
+                }
+
+                this.log(message);
+            } else {
+                this.log(`WebClient file parsing failed: No tracks detected (Duration: ${duration}s)`, false);
+            }
+
+        } catch (error) {
+            this.log(`WebClient file test failed: ${error.message}`, false);
+            console.error('❌ WebClient file test error:', error);
+        }
+    }
+
+    /**
      * Run all tests
      */
     async runAllTests() {
@@ -608,6 +657,7 @@ class WorkerEnvironmentTests {
         await this.testWebMFile();
         this.testMemoryConstraints();
         await this.testErrorHandling();
+        await this.testWebClientFile();
 
         // Summary
         const passed = this.testResults.filter(r => r.success).length;
@@ -640,8 +690,8 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function') {
         self.postMessage({ type: 'testError', error: error.message });
     });
 } else if (typeof globalThis !== 'undefined' &&
-           (globalThis.navigator?.userAgent?.includes?.('Cloudflare-Workers') ||
-            typeof caches !== 'undefined')) {
+    (globalThis.navigator?.userAgent?.includes?.('Cloudflare-Workers') ||
+        typeof caches !== 'undefined')) {
     // Cloudflare Worker context
     console.log('Running tests in Cloudflare Worker context');
 

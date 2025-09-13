@@ -150,6 +150,13 @@ class MinimalWebMParser {
 
         if (length === 0 || this.pos + length > this.buffer.length) return null;
 
+        // For large values that exceed JavaScript's safe integer range,
+        // return a special marker that indicates "unknown size"
+        if (length > 4) {
+            this.pos += length;
+            return { value: -2, length }; // -2 indicates unknown size
+        }
+
         // Read the value
         let value = firstByte & (mask - 1);
         for (let i = 1; i < length; i++) {
@@ -202,7 +209,15 @@ class MinimalWebMParser {
         if (!size) return null;
 
         const dataStart = this.pos;
-        const dataEnd = Math.min(this.pos + size.value, this.buffer.length);
+        let dataEnd;
+
+        if (size.value === -2) {
+            // Unknown size - element extends to end of buffer
+            dataEnd = this.buffer.length;
+        } else {
+            dataEnd = Math.min(this.pos + size.value, this.buffer.length);
+        }
+
         const data = this.buffer.slice(dataStart, dataEnd);
 
         this.pos = dataEnd;
@@ -224,16 +239,12 @@ class MinimalWebMParser {
         }
 
         // Parse document structure
-        // console.log(`🔍 Starting to parse WebM structure (${this.buffer.length} bytes)`);
         while (this.pos < this.buffer.length) {
             const element = this.readElement();
             if (!element) break;
 
-            // console.log(`🔍 Root element: 0x${element.id.toString(16).padStart(8, '0')} (${element.size} bytes)`);
-
             // Segment element (0x18538067 or 0x08538067 - different EBML parsers may read this differently)
             if (element.id === 0x18538067 || element.id === 0x08538067) {
-                // console.log('🔍 Found Segment, parsing...');
                 this.parseSegment(element.data);
                 break;
             }
@@ -278,22 +289,17 @@ class MinimalWebMParser {
             const element = parser.readElement();
             if (!element) break;
 
-            // console.log(`🔍 Segment element: 0x${element.id.toString(16).padStart(8, '0')} (${element.size} bytes)`);
-
             switch (element.id) {
                 case 0x1549A966: // SegmentInfo
                 case 0x0549A966: // SegmentInfo (alternative parsing)
-                    // console.log('🔍 Found SegmentInfo');
                     this.parseSegmentInfo(element.data);
                     break;
                 case 0x1654AE6B: // Tracks
                 case 0x0654AE6B: // Tracks (alternative parsing)
-                    // console.log('🔍 Found Tracks');
                     this.parseTracks(element.data);
                     break;
                 case 0x1F43B675: // Cluster
                 case 0x0F43B675: // Cluster (alternative parsing)
-                    // console.log('🔍 Found Cluster');
                     this.parseCluster(element.data);
                     break;
             }
@@ -325,27 +331,17 @@ class MinimalWebMParser {
     parseTracks(tracksData) {
         const parser = new MinimalWebMParser(tracksData);
 
-        // console.log(`🔍 Parsing tracks data (${tracksData.length} bytes)`);
-
         while (parser.pos < tracksData.length) {
             const element = parser.readElement();
             if (!element) break;
 
-            // console.log(`🔍 Tracks element: 0x${element.id.toString(16).padStart(8, '0')} (${element.size} bytes)`);
-
             if (element.id === 0xAE) { // TrackEntry
-                // console.log('🔍 Found TrackEntry');
                 const track = this.parseTrackEntry(element.data, parser);
                 if (track) {
-                    // console.log(`🔍 Track parsed successfully: ${JSON.stringify(track)}`);
                     this.metadata.tracks.push(track);
-                } else {
-                    // console.log('🔍 Track parsing failed');
                 }
             }
         }
-
-        // console.log(`🔍 Total tracks found: ${this.metadata.tracks.length}`);
     }
 
     /**
